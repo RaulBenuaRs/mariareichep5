@@ -1,79 +1,84 @@
-let prevx, prevy;
-let dots = [];
-let drawingEnabled = true;
+let video;
+let mic;
+let micEnabled = false;
+let prevFrame;
+let smoothMicLevel = 0;
 
 function setup() {
-	createCanvas(windowWidth, windowHeight);
-	background(255,0); // Fondo blanco
-	prevx = mouseX;
-	prevy = mouseY;
+    createCanvas(windowWidth, windowHeight);
+
+    video = createCapture(VIDEO);
+    video.size(width, height);
+    video.hide();
+
+    userStartAudio().then(() => {
+        console.log("🎤 Audio activado por el usuario");
+    }).catch(err => {
+        console.error("🚨 Error al iniciar el audio:", err);
+        alert("Activa el micrófono en la configuración del navegador.");
+    });
+
+    mic = new p5.AudioIn();
+    mic.start(() => {
+        console.log("🎤 Micrófono detectado");
+        micEnabled = true;
+    }, () => {
+        console.error("🚨 No se pudo acceder al micrófono.");
+        alert("No se pudo acceder al micrófono. Verifica los permisos.");
+    });
+
+    prevFrame = createGraphics(width, height);
+    prevFrame.background(255);
+
+    frameRate(30);
 }
 
 function draw() {
-	if (drawingEnabled) {
-		let v = createVector(mouseX - prevx, mouseY - prevy);
-		let numofpts = int(v.mag() / 4) + 1;
-		let vs = v.div(numofpts);
+    let targetMicLevel = micEnabled ? mic.getLevel() * 600 : 0;
+    smoothMicLevel = lerp(smoothMicLevel, targetMicLevel, 0.15);
 
-		strokeWeight(0.25);
-		stroke(0); // Línea negra
-		for (let i = 0; i < numofpts; i += 1) {
-			let sx = mouseX - (vs.x * i);
-			let sy = mouseY - (vs.y * i);
-			dots.push(new ColorDot(sx, sy, color(0)))
-		}
-	}
+    prevFrame.fill(255, 20);
+    prevFrame.rect(0, 0, width, height);
 
-	for (let j = dots.length - 1; j >= 0; j--) {
-		if (dots[j].isdone()) {
-			dots.splice(j, 1);
-			continue;
-		}
-		dots[j].display();
-		dots[j].move();
-	}
+    video.loadPixels();
 
-	prevx = mouseX;
-	prevy = mouseY;
+    if (video.pixels.length > 0) {
+        drawReactiveLines();
+    }
+
+    image(prevFrame, 0, 0);
 }
 
-function mousePressed() {
-	background(255,0);  // Limpia el canvas
-	dots = [];        // Borra los puntos
-	drawingEnabled = false; // Detiene el dibujo
+function drawReactiveLines() {
+    for (let y = 0; y < height; y += 15) {
+        prevFrame.beginShape();
+        for (let x = 0; x < width; x += 8) {
+            let index = (x + y * video.width) * 4;
+            let r = video.pixels[index];
+            let g = video.pixels[index + 1];
+            let b = video.pixels[index + 2];
+            let bright = (r + g + b) / 3;
+
+            let lineWeight = map(bright, 0, 255, 0.8, 2.5) + smoothMicLevel * 0.08;
+            prevFrame.strokeWeight(lineWeight);
+            prevFrame.stroke(174, 134, 101); 
+
+            let offset = map(bright, 0, 255, -5, 5) + smoothMicLevel * 0.5;
+            prevFrame.vertex(x, y + offset);
+        }
+        prevFrame.endShape();
+    }
 }
 
 function windowResized() {
-	resizeCanvas(windowWidth, windowHeight);
-	background(255,0); // Reestablece el fondo blanco al redimensionar
+    resizeCanvas(windowWidth, windowHeight);
+    prevFrame = createGraphics(windowWidth, windowHeight);
+    prevFrame.background(255);
+    video.size(windowWidth, windowHeight);
 }
 
-class ColorDot {
-	constructor(_x, _y, _c) {
-		this.x = _x;
-		this.y = _y;
-		this.c = _c;
-		this.d = 5;
-		this.count = 0;
-		this.lifespan = random(200, 400);
-	}
-
-	move() {
-		this.theta = noise(this.x * 0.015, this.y * 0.015) * 4 * PI;
-		let v = p5.Vector.fromAngle(this.theta, 1);
-		this.x += v.x;
-		this.y += v.y;
-		this.d *= 0.98;
-		this.count++;
-	}
-
-	display() {
-		fill(255);       // Relleno blanco (igual al fondo)
-		stroke(0);       // Borde negro
-		ellipse(this.x, this.y, this.d, this.d);
-	}
-
-	isdone() {
-		return this.count >= this.lifespan;
-	}
+function keyPressed() {
+    if (key === 'f' || key === 'F') {
+        saveCanvas('RAULBENUA-MARIAREICHE', 'jpg');
+    }
 }
